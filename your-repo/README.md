@@ -1,32 +1,37 @@
-# 🔥 Lolcow Fire Game Lobby
+# 🔥 Lolcow Fire Game Lobby v3.0
 
-Multi-game platform featuring Cards Against The LCU and UNO with room codes!
+Multi-game platform featuring Cards Against The LCU and UNO with real-time multiplayer!
 
-## 🎮 Features
+## 🚀 What's Fixed in v3.0
 
-- **Room Code System**: Create/join private game rooms
-- **2 Games**: Cards Against The LCU & UNO
-- **Real-time Multiplayer**: Socket.io powered
-- **Custom Modals**: Beautiful embedded UI (no window popups)
-- **Admin Panel**: Game management and music control
-- **Responsive Design**: Works on desktop and mobile
+### Lobby System Overhaul
+- ✅ **Fixed script loading order** - `main.js` now loads FIRST to define `socket` before game files
+- ✅ **New dedicated lobby-state event** - Separate from game state for clarity
+- ✅ **Players now display correctly** - Shows username, ready status, and highlights current user
+- ✅ **Ready system works** - Toggle ready/unready with visual feedback
+- ✅ **Game starts properly** - When all players ready and minimum reached (3 for CAH, 2 for UNO)
+- ✅ **Status messages** - Shows how many more players/ready needed
+- ✅ **Join room callbacks** - Proper error handling for room not found, name taken, game in progress
+
+### Architecture Improvements
+- Centralized `broadcastLobby()` function for consistent lobby updates
+- Per-player hand distribution (no hand data in shared state)
+- Better state separation between lobby and game phases
+- Proper room cleanup on disconnect
 
 ## 📁 File Structure
 
 ```
 /
 ├── package.json
-├── server.js (main server with both games)
-├── white_cards.txt (CAH white cards)
-├── black_cards.txt (CAH black cards)
+├── server.js              # Unified backend
+├── white_cards.txt        # CAH white cards (optional)
+├── black_cards.txt        # CAH black cards (optional)
 └── public/
-    ├── index.html (main HTML with all screens)
-    ├── main.js (shared functionality, modals, navigation)
-    ├── game-cah.js (Cards Against logic)
-    ├── game-uno.js (UNO game logic)
-    ├── cardsback.png (background image)
-    ├── blkcard.png (black card background)
-    └── whitecard.png (white card background)
+    ├── index.html         # All screens with styling
+    ├── main.js            # LOADS FIRST - Socket, modals, navigation, lobby
+    ├── game-cah.js        # Cards Against game logic
+    ├── game-uno.js        # UNO game logic
 ```
 
 ## 🚀 Quick Start
@@ -44,56 +49,108 @@ Visit `http://localhost:3000`
 3. Connect your repo
 4. Build command: `npm install`
 5. Start command: `npm start`
-6. Add environment variable: `ADMIN_PASS=YourPassword`
+6. Add environment variable: `ADMIN_PASS=YourSecretPassword`
+
+## 🎮 How It Works
+
+### Creating a Game
+1. Enter username on home screen
+2. Click "New Game"
+3. Select game type (Cards Against or UNO)
+4. Share the 6-character room code with friends
+5. Click "Ready Up" when everyone has joined
+6. Game starts when all players are ready!
+
+### Joining a Game
+1. Enter username on home screen
+2. Click "Join with Code"
+3. Enter the room code shared by host
+4. Click "Ready Up"
 
 ## 🎯 Game Rules
 
 ### Cards Against The LCU
-- 3+ players required
-- One Card Czar per round
-- Submit funniest white card for black card prompt
-- Czar picks winner (1 point)
+- **3+ players required**
+- One Card Czar per round picks the funniest answer
+- Submit white cards to fill in the black card's blanks
+- Czar picks winner (earns 1 point)
 - First to 10 points wins!
 
 ### UNO
-- 2-10 players
-- Match card by color or number
+- **2-10 players**
+- Match cards by color or number
 - Special cards: Skip, Reverse, Draw 2, Wild, Wild Draw 4
-- Call "UNO!" when you have 1 card left
+- **Call "UNO!"** when you have 1 card left (or get 2 penalty cards)
 - First to empty their hand wins!
 
-## 🎨 Customization
+## 🔌 Socket Events
 
-### Change Admin Password:
-Set `ADMIN_PASS` environment variable in Render
+### Lobby Events
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `create-room` | Client → Server | Creates new room |
+| `join-room` | Client → Server | Joins existing room |
+| `ready-up` | Client → Server | Toggle ready status |
+| `lobby-state` | Server → Client | Updates lobby UI |
 
-### Modify Win Conditions:
-Edit `WIN_POINTS` in `server.js` (line 14)
+### Game Events (CAH)
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `cah-state` | Server → Client | Full game state + hand |
+| `cah-submit` | Client → Server | Submit white card |
+| `cah-pick` | Client → Server | Czar picks winner |
+| `cah-round-winner` | Server → Client | Announce winner |
+| `cah-game-winner` | Server → Client | Game over |
 
-### Add Custom Cards:
-Edit `white_cards.txt` and `black_cards.txt`
+### Game Events (UNO)
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `uno-state` | Server → Client | Full game state + hand |
+| `uno-play` | Client → Server | Play a card |
+| `uno-draw` | Client → Server | Draw card(s) |
+| `uno-call` | Client → Server | Call UNO |
+| `uno-challenge` | Client → Server | Challenge another player |
 
 ## 🛠 Admin Controls
 
-Password: `Firesluts` (default) or your `ADMIN_PASS`
+Access with admin button (bottom-left). Default password: `Firesluts`
 
-Features:
-- Reset game
-- Wipe chat
-- Play YouTube music
-- View player stats
+- **Reset Game** - Returns everyone to lobby
+- **Wipe Chat** - Clears all messages
+- **Play Music** - Enter YouTube URL for background music
 
-## 📝 Credits
+## 🎨 Customization
 
-Created and Coded by Rykeen
-Powered by Socket.io, Express, and Canvas Confetti
+### Environment Variables
+- `PORT` - Server port (default: 3000)
+- `ADMIN_PASS` - Admin password (default: Firesluts)
 
-## 🐛 Known Issues
+### Custom Cards
+Create `white_cards.txt` and `black_cards.txt` in the root directory, one card per line.
 
-- UNO draw pile reshuffles when empty (working as intended)
-- Chat persists between game switches (feature, not bug)
-- Mobile layout may need optimization for UNO cards
+### Win Condition
+Edit `WIN_POINTS` in server.js (default: 10)
+
+## 🐛 Troubleshooting
+
+### Players not showing in lobby
+- Check browser console (F12) for socket connection
+- Verify server is running (check Render logs)
+- Try refreshing the page
+
+### Game won't start
+- Need minimum players (3 for CAH, 2 for UNO)
+- ALL players must click "Ready Up"
+- Check the status message below player list
+
+### Socket disconnects
+- Check internet connection
+- Server may have restarted (Render free tier sleeps)
+- Refresh page to reconnect
 
 ## 📄 License
 
 MIT License - Do whatever you want with it!
+
+---
+Created and Coded by Rykeen | Overhauled v3.0 Lobby System
