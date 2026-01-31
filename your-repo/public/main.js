@@ -1,11 +1,51 @@
-// Main application logic
+// ============================================
+// MAIN.JS - Core Application Logic
+// ============================================
+
+// Initialize Socket.IO connection
 const socket = io();
+
+// Global state
 let adminPw = "";
 let currentRoomCode = "";
 let currentGameType = "";
 let myUsername = "";
+let isConnected = false;
 
-/* ===== CUSTOM MODAL SYSTEM ===== */
+// ============================================
+// SOCKET CONNECTION HANDLING
+// ============================================
+
+socket.on('connect', () => {
+  console.log('✅ Socket connected!', socket.id);
+  isConnected = true;
+  updateConnectionStatus(true);
+});
+
+socket.on('disconnect', () => {
+  console.log('❌ Socket disconnected!');
+  isConnected = false;
+  updateConnectionStatus(false);
+});
+
+socket.on('connect_error', (error) => {
+  console.error('🔥 Socket connection error:', error);
+  isConnected = false;
+  updateConnectionStatus(false);
+});
+
+function updateConnectionStatus(connected) {
+  const statusEl = document.getElementById('connectionStatus');
+  if (statusEl) {
+    statusEl.textContent = connected ? '🟢 Connected' : '🔴 Disconnected';
+    statusEl.style.color = connected ? 'var(--cyan)' : '#f33';
+  }
+}
+
+// ============================================
+// CUSTOM MODAL SYSTEM
+// ============================================
+
 function showModal(title, message, options = {}) {
   return new Promise((resolve) => {
     const modal = document.getElementById('customModal');
@@ -19,14 +59,17 @@ function showModal(title, message, options = {}) {
     modalTitle.textContent = title;
     modalMessage.textContent = message;
     
+    // Reset visibility
+    modalInput.style.display = 'none';
+    colorSelector.style.display = 'none';
+    
     // Input field
     if (options.input) {
       modalInput.style.display = 'block';
       modalInput.value = options.inputValue || '';
       modalInput.placeholder = options.inputPlaceholder || '';
-      colorSelector.style.display = 'none';
+      setTimeout(() => modalInput.focus(), 100);
     } else if (options.colorPicker) {
-      modalInput.style.display = 'none';
       colorSelector.style.display = 'grid';
       colorSelector.innerHTML = `
         <button class="color-btn" style="background: var(--uno-red);" data-color="red">RED</button>
@@ -34,17 +77,9 @@ function showModal(title, message, options = {}) {
         <button class="color-btn" style="background: var(--uno-green);" data-color="green">GREEN</button>
         <button class="color-btn" style="background: var(--uno-yellow); color: #000;" data-color="yellow">YELLOW</button>
       `;
-    } else {
-      modalInput.style.display = 'none';
-      colorSelector.style.display = 'none';
     }
     
-    if (options.showCancel) {
-      modalCancel.style.display = 'block';
-    } else {
-      modalCancel.style.display = 'none';
-    }
-    
+    modalCancel.style.display = options.showCancel ? 'block' : 'none';
     modalConfirm.textContent = options.confirmText || 'OK';
     modalCancel.textContent = options.cancelText || 'Cancel';
     
@@ -68,53 +103,103 @@ function showModal(title, message, options = {}) {
       }
     };
     
+    const handleKeydown = (e) => {
+      if (e.key === 'Enter' && options.input) {
+        handleConfirm();
+      } else if (e.key === 'Escape') {
+        handleCancel();
+      }
+    };
+    
     const cleanup = () => {
       modal.style.display = 'none';
       modalConfirm.removeEventListener('click', handleConfirm);
       modalCancel.removeEventListener('click', handleCancel);
       colorSelector.removeEventListener('click', handleColorPick);
+      document.removeEventListener('keydown', handleKeydown);
     };
     
     modalConfirm.addEventListener('click', handleConfirm);
     modalCancel.addEventListener('click', handleCancel);
+    document.addEventListener('keydown', handleKeydown);
+    
     if (options.colorPicker) {
       colorSelector.addEventListener('click', handleColorPick);
     }
   });
 }
 
-/* ===== SCREEN MANAGEMENT ===== */
+// ============================================
+// SCREEN MANAGEMENT
+// ============================================
+
 function show(screenId) {
+  console.log(`📺 Showing screen: ${screenId}`);
   document.querySelectorAll('.screen').forEach(s => s.style.display = 'none');
-  document.getElementById(screenId).style.display = 'flex';
+  const screen = document.getElementById(screenId);
+  if (screen) {
+    screen.style.display = 'flex';
+  }
 }
 
-/* ===== HOME & GAME SELECTION ===== */
+// ============================================
+// HOME & NAVIGATION
+// ============================================
+
 function showGameSelection() {
   const name = document.getElementById('name').value.trim();
   if (!name) {
     showModal('⚠️ Error', 'Please enter a username first!');
     return;
   }
+  if (!isConnected) {
+    showModal('⚠️ Connection Error', 'Not connected to server. Please refresh the page.');
+    return;
+  }
   myUsername = name;
   show('gameSelection');
 }
 
+function goHome() {
+  currentRoomCode = "";
+  currentGameType = "";
+  show('home');
+}
+
+// ============================================
+// ROOM CREATION & JOINING
+// ============================================
+
 function selectGame(gameType) {
+  if (!isConnected) {
+    showModal('⚠️ Connection Error', 'Not connected to server. Please refresh the page.');
+    return;
+  }
+  
+  console.log(`🎮 Creating ${gameType} room...`);
   currentGameType = gameType;
-  socket.emit('create-room', { gameType }, (data) => {
-    currentRoomCode = data.roomCode;
-    currentGameType = data.gameType;
-    socket.emit('join-room', { roomCode: currentRoomCode, name: myUsername, gameType: currentGameType });
-    document.getElementById('roomCodeDisplay').textContent = currentRoomCode;
+  
+  socket.emit('create-room', { gameType }, (response) => {
+    console.log('📦 Room created:', response);
+    currentRoomCode = response.roomCode;
+    currentGameType = response.gameType;
     
-    if (gameType === 'cards-against') {
-      document.getElementById('lobbyGameTitle').textContent = '🃏 Cards Against The LCU - Lobby';
-    } else if (gameType === 'uno') {
-      document.getElementById('lobbyGameTitle').textContent = '🎴 UNO - Lobby';
-    }
-    
-    show('lobby');
+    // Now join the room we just created
+    socket.emit('join-room', { 
+      roomCode: currentRoomCode, 
+      name: myUsername, 
+      gameType: currentGameType 
+    }, (joinResponse) => {
+      if (joinResponse.success) {
+        console.log('✅ Joined room successfully');
+        document.getElementById('roomCodeDisplay').textContent = currentRoomCode;
+        updateLobbyTitle();
+        show('lobby');
+        resetReadyButton();
+      } else {
+        showModal('❌ Error', joinResponse.error || 'Failed to join room');
+      }
+    });
   });
 }
 
@@ -122,6 +207,10 @@ async function showJoinRoom() {
   const name = document.getElementById('name').value.trim();
   if (!name) {
     showModal('⚠️ Error', 'Please enter a username first!');
+    return;
+  }
+  if (!isConnected) {
+    showModal('⚠️ Connection Error', 'Not connected to server. Please refresh the page.');
     return;
   }
   
@@ -135,63 +224,188 @@ async function showJoinRoom() {
   if (roomCode && roomCode.trim()) {
     myUsername = name;
     currentRoomCode = roomCode.trim().toUpperCase();
-    socket.emit('join-room', { roomCode: currentRoomCode, name: myUsername });
-    document.getElementById('roomCodeDisplay').textContent = currentRoomCode;
-    show('lobby');
+    
+    console.log(`🚪 Joining room ${currentRoomCode}...`);
+    
+    socket.emit('join-room', { 
+      roomCode: currentRoomCode, 
+      name: myUsername 
+    }, (response) => {
+      console.log('🚪 Join response:', response);
+      
+      if (response.success) {
+        currentGameType = response.gameType;
+        document.getElementById('roomCodeDisplay').textContent = currentRoomCode;
+        updateLobbyTitle();
+        show('lobby');
+        resetReadyButton();
+      } else {
+        showModal('❌ Error', response.error || 'Failed to join room');
+        currentRoomCode = "";
+      }
+    });
   }
 }
+
+function updateLobbyTitle() {
+  const titleEl = document.getElementById('lobbyGameTitle');
+  if (currentGameType === 'cards-against') {
+    titleEl.textContent = '🃏 Cards Against The LCU - Lobby';
+  } else if (currentGameType === 'uno') {
+    titleEl.textContent = '🎴 UNO - Lobby';
+  } else {
+    titleEl.textContent = '🎮 Game Lobby';
+  }
+}
+
+// ============================================
+// LOBBY HANDLING
+// ============================================
+
+socket.on('lobby-state', (data) => {
+  console.log('📡 Lobby state received:', data);
+  
+  currentGameType = data.gameType;
+  currentRoomCode = data.roomCode;
+  
+  // Only show lobby if game hasn't started
+  if (data.started) {
+    return; // Game screens will handle this
+  }
+  
+  show('lobby');
+  
+  const playersDiv = document.getElementById('players');
+  const minPlayers = data.minPlayers;
+  const totalPlayers = data.totalPlayers;
+  const readyCount = data.readyCount;
+  
+  // Build player list
+  if (data.players.length === 0) {
+    playersDiv.innerHTML = `
+      <div class="lobby-waiting">
+        🔍 Waiting for players to join...
+      </div>
+    `;
+  } else {
+    const playerCards = data.players.map(p => {
+      const isMe = p.id === socket.id;
+      return `
+        <div class="lobby-player ${p.ready ? 'ready' : ''} ${isMe ? 'is-me' : ''}">
+          <span class="player-name">${p.username}${isMe ? ' (You)' : ''}</span>
+          <span class="player-status">${p.ready ? '✅ Ready' : '⏳ Waiting'}</span>
+        </div>
+      `;
+    }).join('');
+    
+    playersDiv.innerHTML = playerCards;
+  }
+  
+  // Update status message
+  const statusDiv = document.getElementById('lobbyStatus');
+  if (statusDiv) {
+    if (totalPlayers < minPlayers) {
+      statusDiv.innerHTML = `<span style="color: var(--orange);">Need ${minPlayers - totalPlayers} more player${minPlayers - totalPlayers > 1 ? 's' : ''} to start (minimum ${minPlayers})</span>`;
+    } else if (readyCount < totalPlayers) {
+      statusDiv.innerHTML = `<span style="color: var(--cyan);">Waiting for ${totalPlayers - readyCount} player${totalPlayers - readyCount > 1 ? 's' : ''} to ready up</span>`;
+    } else {
+      statusDiv.innerHTML = `<span style="color: var(--cyan);">🚀 Starting game...</span>`;
+    }
+  }
+  
+  // Update ready button state
+  const me = data.players.find(p => p.id === socket.id);
+  if (me) {
+    updateReadyButtonState(me.ready);
+  }
+  
+  // Update admin panel
+  document.getElementById('adminPlayers').innerHTML = data.players
+    .map(p => `${p.username} – ${p.ready ? '✅' : '⏳'}`)
+    .join('<br>');
+});
+
+// ============================================
+// READY SYSTEM
+// ============================================
 
 function ready() {
-  console.log('Ready button clicked!');
-  socket.emit('ready-up');
-  document.getElementById('readyBtn').disabled = true;
-  document.getElementById('readyBtn').textContent = "⏳ Waiting for others...";
-  document.getElementById('readyBtn').style.opacity = "0.5";
-}
-
-/* ===== CHAT FUNCTIONS ===== */
-function sendMsg() {
-  const input = document.getElementById('msg');
-  if (input.value.trim()) {
-    socket.emit('chat', input.value.trim());
-    input.value = '';
-  }
-}
-
-function sendMsgUno() {
-  const input = document.getElementById('msgUno');
-  if (input.value.trim()) {
-    socket.emit('chat', input.value.trim());
-    input.value = '';
-  }
-}
-
-function toggleChat() {
-  const chat = document.getElementById('chat');
-  const btn = document.getElementById('toggleChatBtn');
+  console.log('🙋 Ready button clicked!');
   
-  if (chat.classList.contains('hidden')) {
-    chat.classList.remove('hidden');
-    btn.classList.remove('chatHidden');
-    btn.textContent = '❌';
+  if (!isConnected) {
+    showModal('⚠️ Error', 'Not connected to server');
+    return;
+  }
+  
+  const btn = document.getElementById('readyBtn');
+  const isCurrentlyReady = btn.dataset.ready === 'true';
+  
+  if (isCurrentlyReady) {
+    socket.emit('unready');
   } else {
-    chat.classList.add('hidden');
-    btn.classList.add('chatHidden');
-    btn.textContent = '💬';
+    socket.emit('ready-up');
   }
 }
 
-socket.on('chat', (d) => {
-  // Update both chat boxes
-  const boxes = [document.getElementById('chat-box'), document.getElementById('chat-box-uno')];
-  boxes.forEach(box => {
+function updateReadyButtonState(isReady) {
+  const btn = document.getElementById('readyBtn');
+  
+  if (isReady) {
+    btn.textContent = '⏳ Waiting for others...';
+    btn.classList.add('ready-active');
+    btn.dataset.ready = 'true';
+  } else {
+    btn.textContent = '✅ Ready Up';
+    btn.classList.remove('ready-active');
+    btn.dataset.ready = 'false';
+  }
+}
+
+function resetReadyButton() {
+  const btn = document.getElementById('readyBtn');
+  btn.textContent = '✅ Ready Up';
+  btn.classList.remove('ready-active');
+  btn.dataset.ready = 'false';
+  btn.disabled = false;
+}
+
+// ============================================
+// GAME RESET HANDLER
+// ============================================
+
+socket.on('game-reset', () => {
+  console.log('🔄 Game reset!');
+  resetReadyButton();
+  show('lobby');
+});
+
+socket.on('force-reload', () => {
+  location.reload();
+});
+
+// ============================================
+// CHAT FUNCTIONS
+// ============================================
+
+function sendChat(inputId) {
+  const input = document.getElementById(inputId);
+  if (input && input.value.trim()) {
+    socket.emit('chat', input.value.trim());
+    input.value = '';
+  }
+}
+
+function sendMsg() { sendChat('msg'); }
+function sendMsgUno() { sendChat('msgUno'); }
+
+socket.on('chat', (data) => {
+  const chatBoxes = ['chat-box', 'chat-box-uno'];
+  chatBoxes.forEach(boxId => {
+    const box = document.getElementById(boxId);
     if (box) {
       const msg = document.createElement('div');
-      msg.innerHTML = `<strong style="color: var(--cyan);">${d.user}:</strong> ${d.text}`;
-      msg.style.marginBottom = '10px';
-      msg.style.padding = '8px';
-      msg.style.background = 'rgba(0, 0, 0, 0.5)';
-      msg.style.borderRadius = '6px';
+      msg.className = 'chat-message';
+      msg.innerHTML = `<strong style="color: var(--cyan);">${data.user}:</strong> ${data.text}`;
       box.appendChild(msg);
       box.scrollTop = box.scrollHeight;
     }
@@ -199,39 +413,58 @@ socket.on('chat', (d) => {
 });
 
 socket.on('wipe-chat', () => {
-  const box1 = document.getElementById('chat-box');
-  const box2 = document.getElementById('chat-box-uno');
-  if (box1) box1.innerHTML = '';
-  if (box2) box2.innerHTML = '';
+  ['chat-box', 'chat-box-uno'].forEach(boxId => {
+    const box = document.getElementById(boxId);
+    if (box) box.innerHTML = '';
+  });
 });
 
-/* ===== WINNER OVERLAYS ===== */
+function toggleChat() {
+  const chatEl = document.querySelector('#gameCAH #chat, #gameUNO #chat');
+  const btn = document.getElementById('toggleChatBtn');
+  
+  if (chatEl) {
+    if (chatEl.classList.contains('hidden')) {
+      chatEl.classList.remove('hidden');
+      btn.textContent = '❌';
+    } else {
+      chatEl.classList.add('hidden');
+      btn.textContent = '💬';
+    }
+  }
+}
+
+// ============================================
+// WINNER OVERLAYS
+// ============================================
+
 function showOverlay(text) {
   const overlay = document.getElementById('winnerOverlay');
   const overlayText = document.getElementById('overlayText');
+  
   overlayText.textContent = text;
   overlay.style.display = 'flex';
   
+  // Auto-dismiss after 3 seconds
   setTimeout(() => {
     overlay.style.display = 'none';
-  }, 2000);
+  }, 3000);
 }
 
 function dismissOverlay() {
   document.getElementById('winnerOverlay').style.display = 'none';
 }
 
-socket.on('force-reload', () => {
-  location.reload();
-});
+// ============================================
+// ADMIN PANEL
+// ============================================
 
-/* ===== ADMIN PANEL ===== */
 async function toggleAdmin() {
   const panel = document.getElementById('adminPanel');
   
   if (!adminPw) {
     adminPw = await showModal(
-      '🔑 Admin Login',
+      '🔒 Admin Login',
       'Enter admin password:',
       { input: true, inputPlaceholder: 'Password', showCancel: true }
     );
@@ -247,11 +480,11 @@ function closeAdmin() {
   document.getElementById('adminPanel').style.display = 'none';
 }
 
-socket.on('a_ok', () => {
+socket.on('admin-ok', () => {
   document.getElementById('adminPanel').style.display = 'flex';
 });
 
-socket.on('a_fail', () => {
+socket.on('admin-fail', () => {
   showModal('❌ Error', 'Wrong admin password!');
   adminPw = "";
 });
@@ -280,7 +513,10 @@ async function wipeChat() {
   }
 }
 
-/* ===== MUSIC ===== */
+// ============================================
+// MUSIC CONTROLS
+// ============================================
+
 async function startMusic() {
   const url = await showModal(
     '🎵 Play Music',
@@ -293,8 +529,8 @@ async function startMusic() {
   socket.emit('admin', { type: 'music-start', pw: adminPw, url: url.trim() });
 }
 
-socket.on('music-start', (d) => {
-  const vid = extractVideoId(d.url);
+socket.on('music-start', (data) => {
+  const vid = extractVideoId(data.url);
   if (vid) {
     const player = document.getElementById('ytPlayer');
     player.classList.add('active');
@@ -313,11 +549,24 @@ function extractVideoId(url) {
   return match ? match[1] : null;
 }
 
-/* ===== ENTER KEY HANDLERS ===== */
+// ============================================
+// KEYBOARD HANDLERS
+// ============================================
+
 document.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     const active = document.activeElement;
     if (active.id === 'msg') sendMsg();
     if (active.id === 'msgUno') sendMsgUno();
+    if (active.id === 'name') showGameSelection();
   }
+});
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('🎮 Game Lobby initialized');
+  show('home');
 });
