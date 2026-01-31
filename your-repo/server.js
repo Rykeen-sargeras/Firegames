@@ -96,19 +96,32 @@ function createRoom(roomCode, gameType) {
 function getRoomState(roomCode) {
   if (!rooms[roomCode]) return null;
   const room = rooms[roomCode];
-  return {
-    players: Object.values(room.players),
+  
+  const state = {
+    players: Object.values(room.players).map(p => ({
+      id: p.id,
+      username: p.username,
+      score: p.score,
+      hand: p.hand,
+      hasSubmitted: p.hasSubmitted,
+      isCzar: p.isCzar,
+      ready: p.ready  // ✅ CRITICAL: Include ready status
+    })),
     blackCard: room.currentBlack,
     submissions: room.submissions,
     started: room.started,
     czarName: Object.values(room.players).find(p => p.isCzar)?.username || "...",
     readyCount: room.readyCount
   };
+  
+  console.log(`📡 Broadcasting CAH state - Room ${roomCode}: ${state.players.length} players, ${room.readyCount} ready, started: ${room.started}`);
+  return state;
 }
 
 function broadcast(roomCode) {
   const state = getRoomState(roomCode);
   if (state) {
+    console.log(`📤 Emitting state to room ${roomCode}`);
     io.to(roomCode).emit("state", state);
   }
 }
