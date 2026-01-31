@@ -3,13 +3,25 @@ let myHand = [];
 let currentPlayerTurn = false;
 
 socket.on('uno-state', (d) => {
+  console.log('📡 Received UNO state:', d);
   currentGameType = 'uno';
   
   if (!d.started) {
     show('lobby');
-    document.getElementById('players').innerHTML = d.players
-      .map(p => `<div style="padding: 8px;">${p.username} ⏳</div>`)
+    
+    console.log(`👥 ${d.players.length} players in lobby, ${d.readyCount} ready`);
+    
+    // Display players in lobby with ready status
+    const playerList = d.players
+      .map(p => `<div style="padding: 8px; font-size: 1.2em;">${p.username} ${p.ready ? '✅' : '⏳'}</div>`)
       .join('');
+    
+    document.getElementById('players').innerHTML = playerList || '<div style="padding: 20px; color: var(--orange);">Waiting for players...</div>';
+    
+    // Update admin list
+    document.getElementById('adminPlayers').innerHTML = d.players
+      .map(p => `${p.username} – Cards: ${p.handCount} ${p.ready ? '✅' : '⏳'}`)
+      .join('<br>');
     return;
   }
   

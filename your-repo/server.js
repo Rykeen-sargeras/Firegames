@@ -221,8 +221,9 @@ function broadcastUno(roomCode) {
     players: Object.values(room.players).map(p => ({
       id: p.id,
       username: p.username,
-      handCount: p.hand.length,
-      calledUno: p.calledUno
+      handCount: p.hand ? p.hand.length : 0,
+      calledUno: p.calledUno,
+      ready: p.ready
     })),
     currentCard: room.currentCard,
     currentPlayer: currentPlayerId,
@@ -290,6 +291,7 @@ io.on("connection", (socket) => {
     
     if (!rooms[roomCode]) {
       createRoom(roomCode, gameType || 'cards-against');
+      console.log(`🆕 Created room ${roomCode} for ${gameType || 'cards-against'}`);
     }
     
     const room = rooms[roomCode];
@@ -307,7 +309,7 @@ io.on("connection", (socket) => {
         ready: false
       };
       
-      console.log("👤 Player joined CAH room", roomCode, ":", name);
+      console.log(`👤 ${name} joined CAH room ${roomCode} (${Object.keys(room.players).length} players)`);
       broadcast(roomCode);
     } else if (room.gameType === 'uno') {
       room.players[socket.id] = {
@@ -318,7 +320,7 @@ io.on("connection", (socket) => {
         calledUno: false
       };
       
-      console.log("👤 Player joined UNO room", roomCode, ":", name);
+      console.log(`👤 ${name} joined UNO room ${roomCode} (${Object.keys(room.players).length} players)`);
       broadcastUno(roomCode);
     }
   });
@@ -336,8 +338,11 @@ io.on("connection", (socket) => {
     
     const totalPlayers = Object.keys(room.players).length;
     
+    console.log(`✅ ${p.username} ready! (${room.readyCount}/${totalPlayers}) in ${roomCode}`);
+    
     if (room.gameType === 'cards-against') {
       if (room.readyCount >= totalPlayers && totalPlayers >= 3) {
+        console.log(`🎮 Starting Cards Against game in ${roomCode}`);
         room.started = true;
         room.czarIndex = 0;
         nextRound(roomCode);
@@ -345,6 +350,7 @@ io.on("connection", (socket) => {
       broadcast(roomCode);
     } else if (room.gameType === 'uno') {
       if (room.readyCount >= totalPlayers && totalPlayers >= 2) {
+        console.log(`🎴 Starting UNO game in ${roomCode}`);
         startUnoGame(roomCode);
       }
       broadcastUno(roomCode);

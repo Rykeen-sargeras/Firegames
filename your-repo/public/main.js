@@ -142,9 +142,11 @@ async function showJoinRoom() {
 }
 
 function ready() {
+  console.log('Ready button clicked!');
   socket.emit('ready-up');
   document.getElementById('readyBtn').disabled = true;
   document.getElementById('readyBtn').textContent = "⏳ Waiting for others...";
+  document.getElementById('readyBtn').style.opacity = "0.5";
 }
 
 /* ===== CHAT FUNCTIONS ===== */
